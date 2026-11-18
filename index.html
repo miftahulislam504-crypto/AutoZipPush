@@ -54,6 +54,18 @@ header p{color:var(--mut);margin-top:10px;max-width:36ch}
 .st{font-size:14px;color:var(--mut);margin-top:14px}
 .st a{color:var(--fg);text-underline-offset:3px}
 .err{color:var(--fg);border:1px solid var(--fg);border-radius:10px;padding:10px 12px;margin-top:12px;font-size:14px}
+.saved{margin-bottom:16px}
+.saved>span{display:block;font-size:14px;color:var(--mut);margin-bottom:6px}
+#savedList{border:1px solid var(--line);border-radius:10px;max-height:188px;overflow:auto}
+.sv{display:flex;align-items:center;border-bottom:1px solid var(--line);transition:background .2s}
+.sv:last-child{border-bottom:0}
+.sv.on{background:var(--soft)}
+.sv button{font:inherit;background:none;border:0;color:var(--fg);cursor:pointer;text-align:left}
+.sv .pick{flex:1;min-width:0;padding:11px 12px}
+.sv .pick b{display:block;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sv .pick small{display:block;color:var(--mut);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sv .del{padding:11px 12px;color:var(--mut);font-size:13px;transition:color .2s}
+.sv .del:hover{color:var(--fg)}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -79,6 +91,7 @@ header p{color:var(--mut);margin-top:10px;max-width:36ch}
 
   <section class="step locked" id="s2">
     <div class="lbl"><span>2</span>Choose repository</div>
+    <div class="saved" id="saved" hidden><span>Saved repositories</span><div id="savedList"></div></div>
     <label class="f"><span id="repoLbl">Repository URL</span><input id="repo" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="github.com/owner/repo"></label>
     <label class="chk" id="newRow"><input type="checkbox" id="isNew"><span>Create a new repository</span></label>
     <label class="chk" id="privRow" hidden><input type="checkbox" id="priv" checked><span>Private repository</span></label>
@@ -123,12 +136,42 @@ function prog(t,p){$('pl').textContent=t;$('pf').style.width=(p*100)+'%'}
 function nm(){return $('repo').value.trim().replace(/\s+/g,'-')}
 function repoOk(){return $('isNew').checked?/^[\w.-]+$/.test(nm()):!!parseRepo($('repo').value)}
 const lbl=()=>$('isNew').checked?'Create and push':'Push to GitHub';
+function getSaved(){try{return JSON.parse(store.get('zp_saved')||'[]')}catch(e){return []}}
+function putSaved(a){store.set('zp_saved',JSON.stringify(a.slice(0,12)))}
+const sameRepo=(a,b)=>(a.owner+'/'+a.repo).toLowerCase()===(b.owner+'/'+b.repo).toLowerCase();
+function saveRepo(o,r,br,dir){
+  const a=getSaved().filter(x=>!sameRepo(x,{owner:o,repo:r}));
+  a.unshift({owner:o,repo:r,branch:br||'',dir:dir||''});
+  putSaved(a);renderSaved();
+}
+function renderSaved(){
+  const a=getSaved(),box=$('savedList'),cur=parseRepo($('repo').value);
+  $('saved').hidden=!a.length||$('isNew').checked;
+  box.textContent='';
+  a.forEach(x=>{
+    const row=document.createElement('div');
+    row.className='sv'+(cur&&sameRepo(cur,x)?' on':'');
+    const pick=document.createElement('button');pick.type='button';pick.className='pick';
+    const b=document.createElement('b');b.textContent=x.owner+'/'+x.repo;
+    const m=document.createElement('small');m.textContent=(x.branch||'Default branch')+', '+(x.dir||'repository root');
+    pick.append(b,m);
+    pick.onclick=()=>{
+      $('repo').value='github.com/'+x.owner+'/'+x.repo;$('br').value=x.branch;$('dir').value=x.dir;
+      if($('rem').checked)store.set('zp_repo',$('repo').value);
+      render();renderSaved();upd();
+    };
+    const del=document.createElement('button');del.type='button';del.className='del';del.textContent='Remove';
+    del.onclick=()=>{putSaved(getSaved().filter(y=>!sameRepo(y,x)));renderSaved()};
+    row.append(pick,del);box.appendChild(row);
+  });
+}
 function setMode(){
   const on=$('isNew').checked;
   $('repoLbl').textContent=on?'Repository name':'Repository URL';
   $('repo').placeholder=on?'my-new-repo':'github.com/owner/repo';
   $('repo').inputMode=on?'text':'url';
   $('privRow').hidden=!on;$('newHint').hidden=!on;$('br').disabled=on;
+  renderSaved();
   if(!S.busy)prog(lbl(),0);
 }
 function upd(){$('push').disabled=!(S.token&&S.entries.length&&repoOk())}
@@ -230,8 +273,9 @@ async function blob(base,it){
   }
 }
 
-function finish(o,r,sha,n,made){
+function finish(o,r,sha,n,made,br){
   prog('Done',1);
+  saveRepo(o,r,made?'':(br||''),$('dir').value.trim().replace(/^\/+|\/+$/g,''));
   const s=$('st'),a=document.createElement('a');
   a.href='https://github.com/'+o+'/'+r+'/commit/'+sha;a.target='_blank';a.rel='noopener';a.textContent='View commit';
   s.hidden=false;s.classList.remove('err');s.textContent=(made?'Repository created. ':'')+'Pushed '+n+(n>1?' files. ':' file. ');s.appendChild(a);
@@ -278,7 +322,7 @@ async function push(){
       const first=items[0];
       const c0=await api(base+'/contents/'+enc(first.path),{method:'PUT',body:JSON.stringify({message:msg,content:await first.f.async('base64'),branch:br})});
       todo=items.slice(1);
-      if(!todo.length){finish(o,r,c0.commit.sha,total,made);return}
+      if(!todo.length){finish(o,r,c0.commit.sha,total,made,br);return}
       head=(await api(base+'/git/ref/heads/'+enc(br))).object.sha;
     }
     const parent=await api(base+'/git/commits/'+head),n=todo.length,shas=new Array(n);
@@ -298,7 +342,7 @@ async function push(){
     prog('Updating branch',.98);
     if(fresh)await api(base+'/git/refs',{method:'POST',body:JSON.stringify({ref:'refs/heads/'+br,sha:c.sha})});
     else await api(base+'/git/refs/heads/'+enc(br),{method:'PATCH',body:JSON.stringify({sha:c.sha})});
-    finish(o,r,c.sha,total,made);
+    finish(o,r,c.sha,total,made,br);
   }catch(e){prog(lbl(),0);show('st',(made?'Repository “'+r+'” was created, but the push failed. Untick the option and use its URL to retry. ':'')+human(e),1)}
   finally{
     S.busy=false;$('push').classList.remove('busy');upd();
@@ -313,7 +357,7 @@ $('disc').onclick=()=>{
   $('login').hidden=false;$('who').hidden=true;lock(true);upd();
 };
 const stash={url:'',name:''};
-$('repo').oninput=()=>{if($('rem').checked&&!$('isNew').checked)store.set('zp_repo',$('repo').value);upd()};
+$('repo').oninput=()=>{if($('rem').checked&&!$('isNew').checked)store.set('zp_repo',$('repo').value);renderSaved();upd()};
 $('isNew').onchange=()=>{
   const on=$('isNew').checked;
   stash[on?'url':'name']=$('repo').value;
@@ -334,6 +378,7 @@ dz.addEventListener('drop',e=>load(e.dataTransfer.files));
   if(u)$('user').value=u;
   if(rp)$('repo').value=rp;
   if(t){$('tok').value=t;connect()}
+  renderSaved();
 })();
 </script>
 </body>
