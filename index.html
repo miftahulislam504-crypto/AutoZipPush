@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Zip Push</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400&display=swap">
+<style>
+:root{--bg:#fff;--fg:#000;--mut:#555;--line:#cfcfcf;--soft:#f6f6f6;--fill:#3b3b3b;--ring:rgba(0,0,0,.08);--ease:cubic-bezier(.2,.7,.2,1)}
+@media(prefers-color-scheme:dark){:root{--bg:#000;--fg:#fff;--mut:#b0b0b0;--line:#3d3d3d;--soft:#101010;--fill:#b8b8b8;--ring:rgba(255,255,255,.14)}}
+*{box-sizing:border-box;margin:0}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--fg);font:15px/1.55 Geist,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
+.wrap{max-width:440px;margin:0 auto;padding:max(48px,env(safe-area-inset-top)) 20px max(72px,env(safe-area-inset-bottom));animation:in .8s var(--ease) both}
+@keyframes in{from{opacity:0;transform:translateY(10px)}}
+header{margin-bottom:32px}
+h1{font-size:36px;font-weight:600;letter-spacing:-.035em;line-height:1.1}
+header p{color:var(--mut);margin-top:10px;max-width:36ch}
+.step{border-top:1px solid var(--line);padding:22px 0 28px;transition:opacity .5s var(--ease)}
+.step.locked{opacity:.6;pointer-events:none}
+.lbl{display:flex;gap:12px;font-weight:500;margin-bottom:18px}
+.lbl span{color:var(--mut);font-variant-numeric:tabular-nums}
+.f{display:block;margin-bottom:12px}
+.f>span{display:block;font-size:14px;color:var(--mut);margin-bottom:6px}
+.f input{width:100%;height:46px;padding:0 14px;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--fg);font:inherit;font-size:16px;outline:0;transition:border-color .2s,box-shadow .2s}
+.f input:focus{border-color:var(--fg);box-shadow:0 0 0 3px var(--ring)}
+.f input::placeholder{color:var(--mut);opacity:.85}
+.f input:disabled{opacity:.4}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.hint{font-size:13px;color:var(--mut);margin:-2px 0 14px}
+.chk{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--mut);margin:4px 0 16px;cursor:pointer}
+.chk input{width:16px;height:16px;accent-color:var(--fg);flex:none}
+.btn{position:relative;overflow:hidden;display:block;width:100%;height:48px;border:1px solid var(--fg);border-radius:10px;background:var(--fg);color:var(--bg);font:inherit;font-weight:500;cursor:pointer;transition:transform .15s var(--ease),opacity .25s,border-color .25s}
+.btn span{position:relative}
+.btn i{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--fill);transition:width .45s var(--ease)}
+.btn:active{transform:scale(.985)}
+.btn:disabled{background:transparent;color:var(--mut);border-color:var(--line);cursor:default}
+.btn.busy{pointer-events:none}
+.btn.ghost{background:transparent;color:var(--fg);border-color:var(--line);height:40px;width:auto;padding:0 16px}
+.btn.ghost:hover{border-color:var(--fg)}
+.btn:focus-visible,.drop:focus-within{outline:2px solid var(--fg);outline-offset:3px}
+.who{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.who b{font-weight:500;display:flex;align-items:center;gap:10px;word-break:break-all}
+.who b::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--fg);flex:none}
+.drop{position:relative;display:block;border:1px dashed var(--line);border-radius:14px;padding:32px 16px;text-align:center;cursor:pointer;margin-bottom:14px;transition:border-color .25s,background .25s}
+.drop:hover,.drop.on{border-color:var(--fg);background:var(--soft)}
+.drop input{position:absolute;opacity:0;width:1px;height:1px}
+.drop b{display:block;font-weight:500;word-break:break-all}
+.drop small{color:var(--mut);font-size:14px}
+.list{border:1px solid var(--line);border-radius:10px;padding:10px 12px;max-height:176px;overflow:auto;margin-bottom:14px;font:12px/1.9 "Geist Mono",ui-monospace,Menlo,monospace;color:var(--mut)}
+.list div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st{font-size:14px;color:var(--mut);margin-top:14px}
+.st a{color:var(--fg);text-underline-offset:3px}
+.err{color:var(--fg);border:1px solid var(--fg);border-radius:10px;padding:10px 12px;margin-top:12px;font-size:14px}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <h1>Zip Push</h1>
+    <p>Upload a zip or single files and they land in your repository, path for path.</p>
+  </header>
+
+  <section class="step" id="s1">
+    <div class="lbl"><span>1</span>Connect GitHub</div>
+    <div id="login">
+      <label class="f"><span>Username</span><input id="user" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="your-username"></label>
+      <label class="f"><span>Access token</span><input id="tok" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false" placeholder="github_pat_… or ghp_…"></label>
+      <p class="hint">Classic token: repo scope. Fine-grained: Contents, read and write.</p>
+      <label class="chk"><input type="checkbox" id="rem" checked><span>Remember on this device</span></label>
+      <button class="btn" id="conn"><span>Connect</span></button>
+    </div>
+    <div class="who" id="who" hidden><b id="whoName"></b><button class="btn ghost" id="disc"><span>Disconnect</span></button></div>
+    <p class="err" id="e1" hidden></p>
+  </section>
+
+  <section class="step locked" id="s2">
+    <div class="lbl"><span>2</span>Choose repository</div>
+    <label class="f"><span id="repoLbl">Repository URL</span><input id="repo" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="github.com/owner/repo"></label>
+    <label class="chk" id="newRow"><input type="checkbox" id="isNew"><span>Create a new repository</span></label>
+    <label class="chk" id="privRow" hidden><input type="checkbox" id="priv" checked><span>Private repository</span></label>
+    <p class="hint" id="newHint" hidden>Creating a repository needs a classic token with repo scope.</p>
+    <div class="row">
+      <label class="f"><span>Branch</span><input id="br" autocapitalize="off" spellcheck="false" placeholder="Default branch"></label>
+      <label class="f"><span>Folder path</span><input id="dir" autocapitalize="off" spellcheck="false" placeholder="Repository root"></label>
+    </div>
+    <label class="f"><span>Commit message</span><input id="msg" placeholder="Upload via Zip Push"></label>
+  </section>
+
+  <section class="step locked" id="s3">
+    <div class="lbl"><span>3</span>Upload zip or files</div>
+    <label class="drop" id="drop">
+      <input type="file" id="file" multiple>
+      <b id="dt">Choose a zip or files</b><small id="ds">or drop them here</small>
+    </label>
+    <label class="f" id="nameRow" hidden><span>File name in repository</span><input id="fname" autocapitalize="off" spellcheck="false"></label>
+    <label class="chk" id="rootRow" hidden><input type="checkbox" id="strip"><span id="rootTxt"></span></label>
+    <div class="list" id="list" hidden></div>
+    <button class="btn" id="push" disabled><i id="pf"></i><span id="pl">Push to GitHub</span></button>
+    <p class="st" id="st" hidden></p>
+  </section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+const $=id=>document.getElementById(id),sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const S={token:'',login:'',entries:[],root:'',single:false,busy:false};
+const store={
+  get:k=>{try{return localStorage.getItem(k)||''}catch(e){return ''}},
+  set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}},
+  del:k=>{try{localStorage.removeItem(k)}catch(e){}}
+};
+const enc=p=>p.split('/').map(encodeURIComponent).join('/');
+const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=n=>n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(1)+' MB';
+const human=e=>e.status===401?'Token is invalid or expired.':e.status===404?'Not found. Check the URL and the token’s access.':e.status===403?'Access denied or rate limited. '+e.message:(e.message||'Something went wrong.');
+const lock=on=>['s2','s3'].forEach(i=>$(i).classList.toggle('locked',on));
+function show(id,t,err){const el=$(id);el.hidden=!t;el.textContent=t||'';el.classList.toggle('err',!!err)}
+function prog(t,p){$('pl').textContent=t;$('pf').style.width=(p*100)+'%'}
+function nm(){return $('repo').value.trim().replace(/\s+/g,'-')}
+function repoOk(){return $('isNew').checked?/^[\w.-]+$/.test(nm()):!!parseRepo($('repo').value)}
+const lbl=()=>$('isNew').checked?'Create and push':'Push to GitHub';
+function setMode(){
+  const on=$('isNew').checked;
+  $('repoLbl').textContent=on?'Repository name':'Repository URL';
+  $('repo').placeholder=on?'my-new-repo':'github.com/owner/repo';
+  $('repo').inputMode=on?'text':'url';
+  $('privRow').hidden=!on;$('newHint').hidden=!on;$('br').disabled=on;
+  if(!S.busy)prog(lbl(),0);
+}
+function upd(){$('push').disabled=!(S.token&&S.entries.length&&repoOk())}
+
+async function api(path,o={}){
+  const r=await fetch('https://api.github.com'+path,{...o,headers:{Authorization:'Bearer '+S.token,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28',...(o.body?{'Content-Type':'application/json'}:{})}});
+  if(!r.ok){let m='';try{const j=await r.json(),x=j.errors&&j.errors[0];m=(j.message||'')+(x?': '+(typeof x==='string'?x:(x.message||x.code||'')):'')}catch(e){}const err=new Error(m||('HTTP '+r.status));err.status=r.status;throw err}
+  return r.status===204?null:r.json();
+}
+
+function parseRepo(u){
+  u=u.trim();
+  const m=u.match(/github\.com[\/:]([\w.-]+)\/([\w.-]+)/i)||u.match(/^([\w.-]+)\/([\w.-]+)$/);
+  if(!m)return null;
+  const t=u.match(/\/tree\/([^?#]+)/);
+  return{owner:m[1],repo:m[2].replace(/\.git$/,''),branch:t?decodeURIComponent(t[1]).replace(/\/$/,''):''};
+}
+
+async function connect(){
+  const u=$('user').value.trim(),t=$('tok').value.trim();
+  show('e1','');
+  if(!u||!t){show('e1','Enter your username and token.',1);return}
+  const b=$('conn');b.disabled=true;b.firstChild.textContent='Connecting';
+  S.token=t;
+  try{
+    const me=await api('/user');
+    if(me.login.toLowerCase()!==u.toLowerCase())throw new Error('This token belongs to “'+me.login+'”, not “'+u+'”.');
+    S.login=me.login;
+    if($('rem').checked){store.set('zp_u',u);store.set('zp_t',t)}else{store.del('zp_u');store.del('zp_t')}
+    $('whoName').textContent=me.login;$('login').hidden=true;$('who').hidden=false;
+    lock(false);
+  }catch(e){S.token='';show('e1',human(e),1)}
+  b.disabled=false;b.firstChild.textContent='Connect';upd();
+}
+
+function plan(){
+  const strip=S.root&&$('strip').checked,pre=$('dir').value.trim().replace(/^\/+|\/+$/g,'');
+  return S.entries.map(f=>{
+    let p=f.name.replace(/\\/g,'/');
+    if(strip)p=p.slice(S.root.length+1);
+    if(S.single)p=$('fname').value.trim().replace(/\\/g,'/').replace(/^\/+/,'')||p;
+    const up=f.unixPermissions;
+    return{f,path:(pre&&p?pre+'/':'')+p,mode:(typeof up==='number'&&(up&73))?'100755':'100644'};
+  }).filter(x=>x.path&&!x.path.split('/').includes('..'));
+}
+
+function render(){
+  const p=plan();
+  $('list').hidden=!p.length;
+  $('list').innerHTML=p.slice(0,300).map(x=>'<div>'+esc(x.path)+'</div>').join('')+(p.length>300?'<div>+ '+(p.length-300)+' more</div>':'');
+}
+
+async function load(files){
+  files=[...(files||[])];
+  if(!files.length)return;
+  show('st','');
+  if(!(files.length===1&&/\.zip$/i.test(files[0].name))){
+    S.entries=files.map(f=>({name:f.name,async:()=>b64(f)}));
+    S.root='';S.single=files.length===1;
+    $('rootRow').hidden=true;$('strip').checked=false;
+    $('nameRow').hidden=!S.single;$('fname').value=files[0].name;
+    $('dt').textContent=S.single?files[0].name:files.length+' files selected';
+    $('ds').textContent=(S.single?'':files.length+' files, ')+fmt(files.reduce((a,f)=>a+f.size,0));
+    render();upd();return;
+  }
+  const file=files[0];
+  try{
+    const z=await JSZip.loadAsync(file),list=[];
+    z.forEach((p,f)=>{
+      const n=f.name.replace(/\\/g,'/');
+      if(f.dir||/(^|\/)(__MACOSX|\.git|\.DS_Store|Thumbs\.db)(\/|$)/.test(n)||n.split('/').includes('..'))return;
+      list.push(f);
+    });
+    if(!list.length)throw new Error('The zip contains no files.');
+    S.entries=list;S.single=false;$('nameRow').hidden=true;
+    const first=list[0].name.split('/')[0];
+    S.root=list.every(f=>f.name.startsWith(first+'/'))?first:'';
+    $('rootRow').hidden=!S.root;$('strip').checked=false;
+    $('rootTxt').textContent='Remove top-level folder “'+S.root+'”';
+    $('dt').textContent=file.name;
+    $('ds').textContent=list.length+(list.length>1?' files, ':' file, ')+fmt(file.size);
+    render();
+  }catch(e){S.entries=[];$('list').hidden=true;show('st','Could not read this zip. '+e.message,1)}
+  upd();
+}
+
+const b64=f=>new Promise((res,rej)=>{
+  const r=new FileReader();
+  r.onload=()=>res(String(r.result).split(',')[1]||'');
+  r.onerror=()=>rej(new Error('Could not read '+f.name));
+  r.readAsDataURL(f);
+});
+
+async function blob(base,it){
+  const content=await it.f.async('base64');
+  for(let t=0;;t++){
+    try{return(await api(base+'/git/blobs',{method:'POST',body:JSON.stringify({content,encoding:'base64'})})).sha}
+    catch(e){if(t>=2||(e.status&&e.status<500&&e.status!==403&&e.status!==429))throw e;await sleep(900*(t+1))}
+  }
+}
+
+function finish(o,r,sha,n,made){
+  prog('Done',1);
+  const s=$('st'),a=document.createElement('a');
+  a.href='https://github.com/'+o+'/'+r+'/commit/'+sha;a.target='_blank';a.rel='noopener';a.textContent='View commit';
+  s.hidden=false;s.classList.remove('err');s.textContent=(made?'Repository created. ':'')+'Pushed '+n+(n>1?' files. ':' file. ');s.appendChild(a);
+  S.entries=[];S.root='';$('file').value='';$('rootRow').hidden=true;$('list').hidden=true;
+  S.single=false;$('nameRow').hidden=true;
+  $('dt').textContent='Choose a zip or files';$('ds').textContent='or drop them here';
+  if(made){
+    $('isNew').checked=false;stash.url='';stash.name='';
+    $('repo').value='github.com/'+o+'/'+r;setMode();
+    if($('rem').checked)store.set('zp_repo',$('repo').value);
+  }
+}
+
+async function push(){
+  const mk=$('isNew').checked,rp=mk?null:parseRepo($('repo').value);
+  if(S.busy||!S.entries.length||(mk?!repoOk():!rp))return;
+  S.busy=true;$('push').classList.add('busy');show('st','');
+  const msg=$('msg').value.trim()||'Upload via Zip Push';
+  let o,r,base,made=false;
+  try{
+    let repo;
+    if(mk){
+      prog('Creating repository',.02);
+      repo=await api('/user/repos',{method:'POST',body:JSON.stringify({name:nm(),private:$('priv').checked})});
+      made=true;o=repo.owner.login;r=repo.name;base='/repos/'+o+'/'+r;
+      await sleep(1200);
+    }else{
+      o=rp.owner;r=rp.repo;base='/repos/'+o+'/'+r;
+      prog('Checking repository',.02);
+      repo=await api(base);
+      if(repo.permissions&&!repo.permissions.push)throw new Error('This token has no write access to '+repo.full_name+'.');
+    }
+    let br=mk?repo.default_branch:($('br').value.trim()||rp.branch||repo.default_branch),head=null,fresh=false,empty=false;
+    try{head=(await api(base+'/git/ref/heads/'+enc(br))).object.sha}
+    catch(e){
+      if(e.status===409||(e.status===404&&br===repo.default_branch&&!repo.size))empty=true;
+      else if(e.status===404){head=(await api(base+'/git/ref/heads/'+enc(repo.default_branch))).object.sha;fresh=true}
+      else throw e;
+    }
+    const items=plan(),total=items.length;
+    let todo=items;
+    if(empty){
+      br=repo.default_branch;prog('Initializing repository',.05);
+      const first=items[0];
+      const c0=await api(base+'/contents/'+enc(first.path),{method:'PUT',body:JSON.stringify({message:msg,content:await first.f.async('base64'),branch:br})});
+      todo=items.slice(1);
+      if(!todo.length){finish(o,r,c0.commit.sha,total,made);return}
+      head=(await api(base+'/git/ref/heads/'+enc(br))).object.sha;
+    }
+    const parent=await api(base+'/git/commits/'+head),n=todo.length,shas=new Array(n);
+    let i=0,k=0,fail=null;
+    const work=async()=>{
+      while(i<n&&!fail){
+        const j=i++;
+        try{shas[j]=await blob(base,todo[j]);k++;prog('Uploading '+k+' / '+n,.05+.85*k/n)}
+        catch(e){fail=e;throw e}
+      }
+    };
+    await Promise.all(Array.from({length:Math.min(5,n)},work));
+    prog('Creating commit',.94);
+    const tree=await api(base+'/git/trees',{method:'POST',body:JSON.stringify({base_tree:parent.tree.sha,tree:todo.map((x,j)=>({path:x.path,mode:x.mode,type:'blob',sha:shas[j]}))})});
+    if(tree.sha===parent.tree.sha&&!fresh){prog(lbl(),0);show('st','Nothing to commit. The repository already matches this zip.');return}
+    const c=await api(base+'/git/commits',{method:'POST',body:JSON.stringify({message:msg,tree:tree.sha,parents:[head]})});
+    prog('Updating branch',.98);
+    if(fresh)await api(base+'/git/refs',{method:'POST',body:JSON.stringify({ref:'refs/heads/'+br,sha:c.sha})});
+    else await api(base+'/git/refs/heads/'+enc(br),{method:'PATCH',body:JSON.stringify({sha:c.sha})});
+    finish(o,r,c.sha,total,made);
+  }catch(e){prog(lbl(),0);show('st',(made?'Repository “'+r+'” was created, but the push failed. Untick the option and use its URL to retry. ':'')+human(e),1)}
+  finally{
+    S.busy=false;$('push').classList.remove('busy');upd();
+    setTimeout(()=>{if(!S.busy)prog(lbl(),0)},1400);
+  }
+}
+
+$('conn').onclick=connect;
+$('tok').onkeydown=e=>{if(e.key==='Enter')connect()};
+$('disc').onclick=()=>{
+  S.token='';S.login='';store.del('zp_t');$('tok').value='';
+  $('login').hidden=false;$('who').hidden=true;lock(true);upd();
+};
+const stash={url:'',name:''};
+$('repo').oninput=()=>{if($('rem').checked&&!$('isNew').checked)store.set('zp_repo',$('repo').value);upd()};
+$('isNew').onchange=()=>{
+  const on=$('isNew').checked;
+  stash[on?'url':'name']=$('repo').value;
+  $('repo').value=stash[on?'name':'url'];
+  setMode();upd();
+};
+$('dir').oninput=render;$('strip').onchange=render;
+$('file').onchange=e=>{const f=[...e.target.files];e.target.value='';load(f)};
+$('fname').oninput=render;
+$('push').onclick=push;
+const dz=$('drop');
+['dragenter','dragover'].forEach(n=>dz.addEventListener(n,e=>{e.preventDefault();dz.classList.add('on')}));
+['dragleave','drop'].forEach(n=>dz.addEventListener(n,e=>{e.preventDefault();dz.classList.remove('on')}));
+dz.addEventListener('drop',e=>load(e.dataTransfer.files));
+
+(()=>{
+  const u=store.get('zp_u'),t=store.get('zp_t'),rp=store.get('zp_repo');
+  if(u)$('user').value=u;
+  if(rp)$('repo').value=rp;
+  if(t){$('tok').value=t;connect()}
+})();
+</script>
+</body>
+</html>
